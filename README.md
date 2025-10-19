@@ -25,13 +25,15 @@ Ultra-fast disk space analyzer with MFT support for Windows, providing WizTree-l
 
 ## Installation
 
-1. Download `DiskAnalyzer.ps1`
+1. Download `DiskAnalyzer.ps1` (single file - no dependencies)
 2. Right-click and select "Run with PowerShell" (as Administrator)
 
 Or via command line:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\DiskAnalyzer.ps1
 ```
+
+**Note:** All functionality is contained in a single `.ps1` file for easy deployment.
 
 ## Usage
 
@@ -115,6 +117,8 @@ On NTFS drives in Deep Mode, the tool:
 The dual-mode approach solves the trade-off between speed and functionality:
 - **Fast Mode**: Optimized for quick analysis and large drives
 - **Deep Mode**: Optimized for thorough analysis and frequent navigation
+
+All scanning modes are integrated into a single PowerShell script (`DiskAnalyzer.ps1`) with no external dependencies. Users select their preferred mode through an interactive menu at startup.
 
 ## Legal Disclaimer
 
