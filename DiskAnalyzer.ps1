@@ -45,6 +45,7 @@ $script:Config = @{
     SessionID        = (Get-Date -Format "yyyyMMdd_HHmmss")
     MaxDisplayItems  = 50
     TopFilesCount    = 100
+    ScanMode         = "Fast"  # "Fast" (Lazy Loading) or "Deep" (Full Scan with MFT)
     UseMFT           = $true
     MinFileSize      = 0  # bytes
 }
@@ -62,6 +63,13 @@ $script:Statistics = @{
 $script:CurrentScanData = @{
     Contents    = @()
     TotalSize   = 0
+}
+
+$script:DeepScanCache = @{
+    Directories = @{}
+    Files       = @()
+    TotalSize   = 0
+    RootPath    = ""
 }
 
 # ============================================================================
@@ -409,18 +417,18 @@ function Get-DirectorySizeFast {
     }
 }
 
-# Lazy loading approach - only scan current level, calculate subdirectory sizes on demand
+# Fast Mode: Lazy loading - only scan current level
 function Measure-DirectoryFast {
     param(
-        [string]$Path,
-        [switch]$IncludeFiles
+        [string]$Path
     )
     
     $script:Statistics.ScanStartTime = Get-Date
+    $script:Statistics.ScanMethod = "Fast Mode (Lazy Loading)"
     
     try {
         Write-Host ""
-        Write-Host "  [INFO] Analyzing directory: $Path" -ForegroundColor Cyan
+        Write-Host "  [INFO] Fast Mode: Analyzing directory: $Path" -ForegroundColor Cyan
         Write-Host ""
         
         # Get subdirectories (first level only)
@@ -507,16 +515,57 @@ function Measure-DirectoryFast {
     }
 }
 
-# Get directory contents - use cached data if available
+# Get directory contents based on scan mode
 function Get-DirectoryContents {
     param([string]$Path)
     
-    # Return cached data if available
+    if ($script:Config.ScanMode -eq "Deep") {
+        # Deep Mode: Use cached data from full scan
+        if ($script:DeepScanCache -and $script:DeepScanCache.RootPath) {
+            $results = @()
+            
+            # Get subdirectories
+            $subdirs = Get-ChildItem -Path $Path -Directory -Force -ErrorAction SilentlyContinue
+            
+            foreach ($dir in $subdirs) {
+                # Calculate size from cache
+                $size = 0
+                foreach ($cachedDir in $script:DeepScanCache.Directories.Keys) {
+                    if ($cachedDir -like "$($dir.FullName)*") {
+                        $size += $script:DeepScanCache.Directories[$cachedDir]
+                    }
+                }
+                
+                $results += [PSCustomObject]@{
+                    Name     = $dir.Name
+                    FullPath = $dir.FullName
+                    Size     = $size
+                    Type     = "Folder"
+                    Icon     = "[DIR]"
+                }
+            }
+            
+            # Get files from cache
+            $files = $script:DeepScanCache.Files | Where-Object { $_.Directory -eq $Path }
+            foreach ($file in $files) {
+                $results += [PSCustomObject]@{
+                    Name     = $file.Name
+                    FullPath = $file.FullPath
+                    Size     = $file.Size
+                    Type     = "File"
+                    Icon     = "[FILE]"
+                }
+            }
+            
+            return $results | Sort-Object Size -Descending
+        }
+    }
+    
+    # Fast Mode: Return cached data if available
     if ($script:CurrentScanData.Contents) {
         return $script:CurrentScanData.Contents
     }
     
-    # Otherwise scan now (shouldn't happen as Measure-DirectoryFast already does this)
     return @()
 }
 
@@ -792,8 +841,13 @@ function Invoke-MenuAction {
                         $newPath = $selectedItem.FullPath
                         Write-Host "  [INFO] Navigating to: $newPath" -ForegroundColor Cyan
                         
-                        # Rescan the new directory
-                        Measure-DirectoryFast -Path $newPath
+                        # Rescan only in Fast Mode (Deep Mode uses cache)
+                        if ($script:Config.ScanMode -eq "Fast") {
+                            Measure-DirectoryFast -Path $newPath
+                        }
+                        else {
+                            Write-Host "  [INFO] Using cached data (Deep Mode)" -ForegroundColor Green
+                        }
                         
                         $script:Statistics.CurrentPath = $newPath
                         return $newPath
@@ -849,8 +903,13 @@ function Invoke-MenuAction {
             
             Write-Host "  [INFO] Moving to parent: $parent" -ForegroundColor Cyan
             
-            # Rescan parent directory
-            Measure-DirectoryFast -Path $parent
+            # Rescan only in Fast Mode (Deep Mode uses cache)
+            if ($script:Config.ScanMode -eq "Fast") {
+                Measure-DirectoryFast -Path $parent
+            }
+            else {
+                Write-Host "  [INFO] Using cached data (Deep Mode)" -ForegroundColor Green
+            }
             
             return $parent
         }
@@ -1089,10 +1148,51 @@ function Start-DiskAnalyzer {
         exit 0
     }
     
-    Write-Host "  [OK] Proceeding to main menu..." -ForegroundColor Green
+    Write-Host "  [OK] Proceeding to scan mode selection..." -ForegroundColor Green
     Start-Sleep -Seconds 1
     
-    # Step 4: Get path to analyze
+    # Step 4: Select scan mode
+    Clear-Host
+    Write-Host ""
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host "                         SCAN MODE SELECTION                                    " -ForegroundColor Cyan
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Select scanning mode:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  [1] FAST MODE (Recommended)" -ForegroundColor Green
+    Write-Host "      - Lazy loading: scans only current directory level" -ForegroundColor White
+    Write-Host "      - Loads subdirectories on demand" -ForegroundColor White
+    Write-Host "      - Quick start (5-10 seconds)" -ForegroundColor White
+    Write-Host "      - Memory efficient" -ForegroundColor White
+    Write-Host "      - Best for large drives (C:\, D:\)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  [2] DEEP MODE (Advanced)" -ForegroundColor Magenta
+    Write-Host "      - Full recursive scan with MFT support" -ForegroundColor White
+    Write-Host "      - Scans entire directory tree at once" -ForegroundColor White
+    Write-Host "      - Slower start (30-60 seconds)" -ForegroundColor White
+    Write-Host "      - High memory usage" -ForegroundColor White
+    Write-Host "      - Instant navigation after initial scan" -ForegroundColor White
+    Write-Host ""
+    Write-Host "================================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    
+    $modeChoice = Read-Host "  Enter choice [1-2]"
+    
+    if ($modeChoice -eq "2") {
+        $script:Config.ScanMode = "Deep"
+        Write-Host ""
+        Write-Host "  [INFO] Deep Mode selected - Full recursive scanning enabled" -ForegroundColor Cyan
+    }
+    else {
+        $script:Config.ScanMode = "Fast"
+        Write-Host ""
+        Write-Host "  [INFO] Fast Mode selected - Lazy loading enabled" -ForegroundColor Cyan
+    }
+    
+    Start-Sleep -Seconds 1
+    
+    # Step 5: Get path to analyze
     Clear-Host
     Write-Host ""
     Write-Host "================================================================================" -ForegroundColor Cyan
@@ -1149,11 +1249,23 @@ function Start-DiskAnalyzer {
     
     Write-Host ""
     Write-Host "  [INFO] Starting initial scan of: $targetPath" -ForegroundColor Cyan
-    Write-Host "  [INFO] This may take a moment, please wait..." -ForegroundColor Yellow
+    Write-Host "  [INFO] Mode: $($script:Config.ScanMode)" -ForegroundColor Yellow
     Write-Host ""
     
-    # Perform initial scan
-    $success = Measure-DirectoryFast -Path $targetPath
+    # Perform initial scan based on mode
+    if ($script:Config.ScanMode -eq "Deep") {
+        # Source the Deep Scan function
+        . "$PSScriptRoot\DeepScanFunction.ps1"
+        $success = Measure-DirectoryDeep -Path $targetPath
+        
+        # After deep scan, get contents for current directory
+        if ($success) {
+            $script:CurrentScanData.TotalSize = $script:DeepScanCache.TotalSize
+        }
+    }
+    else {
+        $success = Measure-DirectoryFast -Path $targetPath
+    }
     
     if (-not $success) {
         Write-Host ""
