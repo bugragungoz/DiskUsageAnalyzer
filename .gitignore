@@ -1,0 +1,15 @@
+# Logs and Reports
+DiskAnalyzer_Logs/
+*.log
+*.txt
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# PowerShell
+*.ps1.bak
+*.ps1~
+
