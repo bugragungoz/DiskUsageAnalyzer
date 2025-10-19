@@ -6,8 +6,9 @@ Ultra-fast disk space analyzer with MFT support for Windows, providing WizTree-l
 
 ## Features
 
-- **Lazy Loading Architecture** - Analyzes only the current directory level, loads subdirectories on demand
-- **MFT Support** - Direct Master File Table access on NTFS drives for maximum speed
+- **Dual Scan Modes** - Choose between Fast Mode (lazy loading) or Deep Mode (full scan)
+- **Fast Mode** - Lazy loading architecture for quick starts (5-10 seconds)
+- **Deep Mode** - Full recursive scan with MFT support for instant navigation
 - **Mixed View** - Shows folders and files together, sorted by size
 - **Interactive Navigation** - Drill down into directories, explore file distribution
 - **Visual Progress Bars** - Real-time scan progress with file count and speed metrics
@@ -37,8 +38,29 @@ powershell -ExecutionPolicy Bypass -File .\DiskAnalyzer.ps1
 1. Launch the script as Administrator
 2. Accept the legal disclaimer
 3. Read the script information
-4. Enter the path to analyze (e.g., `C:\`, `D:\Users`)
-5. Navigate through results using the interactive menu
+4. **Select scan mode:**
+   - **Fast Mode (Recommended)**: Lazy loading for quick starts
+   - **Deep Mode**: Full scan with instant navigation
+5. Enter the path to analyze (e.g., `C:\`, `D:\Users`)
+6. Navigate through results using the interactive menu
+
+### Scan Modes
+
+**Fast Mode (Lazy Loading)**
+- Scans only the current directory level
+- Loads subdirectories on demand
+- Quick start: 5-10 seconds
+- Memory efficient
+- Best for large drives (C:\, D:\)
+- Rescans when navigating to subdirectories
+
+**Deep Mode (Full Scan)**
+- Scans entire directory tree at once
+- Uses MFT support on NTFS drives
+- Slower start: 30-60 seconds
+- High memory usage
+- Instant navigation after initial scan
+- All data cached in memory
 
 ### Navigation
 
@@ -56,28 +78,43 @@ powershell -ExecutionPolicy Bypass -File .\DiskAnalyzer.ps1
 
 ## Performance
 
+### Fast Mode
 - **Initial Scan:** 5-10 seconds for first-level analysis
 - **Subdirectory Navigation:** 2-5 seconds per directory
-- **Lazy Loading:** Only scans when needed, no full disk recursion
-- **Progress Tracking:** Real-time file count, size, and speed metrics
+- **Memory Usage:** Low (only current directory)
+- **Best For:** Large drives, quick analysis
+
+### Deep Mode
+- **Initial Scan:** 30-60 seconds for full directory tree
+- **Subdirectory Navigation:** Instant (uses cache)
+- **Memory Usage:** High (entire directory tree)
+- **Best For:** Smaller drives, frequent navigation
 
 ## Technical Details
 
-### Lazy Loading Strategy
+### Fast Mode (Lazy Loading)
 
-Unlike traditional disk analyzers that recursively scan entire drives, this tool:
 - Scans only the current directory level
-- Calculates subdirectory sizes on demand
+- Calculates subdirectory sizes recursively on demand
 - Loads content as you navigate
 - Significantly reduces initial scan time
+- Memory efficient - stores only current view
 
-### MFT Scanning
+### Deep Mode (Full Scan with MFT)
 
-On NTFS drives, the tool attempts to:
-- Initialize C# MFT scanner via P/Invoke
-- Access Master File Table directly using `FSCTL_ENUM_USN_DATA`
-- Process millions of files in seconds
-- Fallback to standard scanning if MFT access fails
+On NTFS drives in Deep Mode, the tool:
+- Performs full recursive scan of entire directory tree
+- Attempts to use C# MFT scanner via P/Invoke
+- Accesses Master File Table directly using `FSCTL_ENUM_USN_DATA`
+- Caches all file information in memory
+- Provides instant navigation after initial scan
+- Falls back to standard scanning if MFT access fails
+
+### Architecture
+
+The dual-mode approach solves the trade-off between speed and functionality:
+- **Fast Mode**: Optimized for quick analysis and large drives
+- **Deep Mode**: Optimized for thorough analysis and frequent navigation
 
 ## Legal Disclaimer
 
